@@ -1,44 +1,50 @@
-# risk_policy.yaml — surumlu, makinece okunur tek politika kaynagi
-# (robovis-2027-plan.md Bolum 2.4). mediation_gateway.py bu dosyayi okur;
-# sezgisel/elle gomulu esik DEGERI kod icinde TUTULMAZ.
-politika_surumu: "1.1.0"
-# SHA-256 ozeti, dosya degistiginde build/test script'i tarafindan yeniden
-# hesaplanip mediation_gateway'in log'una yazilir (Bolum 2.4 "surum/hash ile
-# yuklendigi dogrulanmali" gereksinimi).
+# risk_policy.yaml -- versioned, machine-readable single source of policy
+# (paper Sec. IV/2.4). mediation_gateway.py reads this file; no
+# heuristic/hand-embedded threshold VALUE is kept in code.
+#
+# NOTE (translated for the reproducibility artifact): this is a translated
+# copy of the versioned policy file that governed the reported
+# experiments, for reviewer readability. The real, running system consumes
+# the original Turkish-keyed file; the numeric values, booleans, and stage
+# numbering below are unchanged.
+policy_version: "1.1.0"
+# The SHA-256 digest is recomputed by the build/test script whenever the
+# file changes and written to mediation_gateway's log (Sec. 2.4
+# "must be verifiable as loaded with its version/hash" requirement).
 
-asamalar:
-  1: {ad: "Su Gecisi",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  2: {ad: "Tasli Yol",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  3: {ad: "Yan Egim",        risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  4: {ad: "Dik Engel",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  5: {ad: "Koni Slalom",     risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  6: {ad: "Kayar Engel",     risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  7: {ad: "Engebeli Arazi",  risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
-  8: {ad: "Dik Egim Cikis",  risk_sinifi: yuksek, resume_allowed: false, skip_allowed_ortak_kanal: false}
-  9: {ad: "Atis",            risk_sinifi: waypointsiz, resume_allowed: false, skip_allowed_ortak_kanal: false}
-  10: {ad: "Dik Egim Inis",  risk_sinifi: yuksek, resume_allowed: false, skip_allowed_ortak_kanal: false}
+stages:
+  1: {name: "Water Crossing",      risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  2: {name: "Rocky Road",          risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  3: {name: "Side Slope",          risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  4: {name: "Steep Obstacle",      risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  5: {name: "Cone Slalom",         risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  6: {name: "Sliding Obstacle",    risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  7: {name: "Rough Terrain",       risk_class: low,  resume_allowed: true,  skip_allowed_shared_channel: false}
+  8: {name: "Steep Slope Ascent",  risk_class: high, resume_allowed: false, skip_allowed_shared_channel: false}
+  9: {name: "Firing",              risk_class: waypointless, resume_allowed: false, skip_allowed_shared_channel: false}
+  10: {name: "Steep Slope Descent", risk_class: high, resume_allowed: false, skip_allowed_shared_channel: false}
 
-# SKIP, hicbir asamada ortak (LLM/UI) kanaldan varsayilan olarak izinli
-# DEGILDIR (robovis-2027-plan.md Asama A) — yalnizca ayri, SROS2 ile
-# yetkilendirilmis operator kanali acilirsa, o kanal icin ayrica politika
-# tanimlanir. Bu Regular Paper penceresinde o kanal YOK; hepsi false kalir.
+# SKIP is NOT permitted by default from the shared (LLM/UI) channel at any
+# stage (paper Stage A) -- only if a separate, SROS2-authorized operator
+# channel is opened would a policy for that channel be defined separately.
+# That channel does NOT exist in this Regular Paper window; all remain false.
 
-tek_asama_test_modu:
-  ortak_kanaldan_etkin: false  # R4: START target_stage>0 mediation kanalindan HER ZAMAN reddedilir
-  yalnizca_test_enclave: true  # SROS2 ile ayri kimlik tanimlanirsa acik olur (Asama C sonrasi, bu planda YOK)
+single_stage_test_mode:
+  active_from_shared_channel: false  # R4: START target_stage>0 is ALWAYS denied from the mediation channel
+  test_enclave_only: true  # becomes active only if a separate identity is defined via SROS2 (post-Stage C, NOT in this plan)
 
-telemetri_tazelik_esikleri:
-  mission_status_max_yas_s: 2.0
-  batarya_max_yas_s: 5.0
-  tf_odom_max_yas_s: 1.0
+telemetry_freshness_thresholds:
+  mission_status_max_age_s: 2.0
+  battery_max_age_s: 5.0
+  tf_odom_max_age_s: 1.0
 
-batarya:
-  min_yuzde: 0.20
+battery:
+  min_percentage: 0.20
 
-konum_toleransi:
+position_tolerance:
   sign_jump_max_distance_m: 7.0
 
-# Eksik/bayat/NaN/gecersiz/celiskili veri VARSAYILAN OLARAK RET uretir
-# (robovis-2027-plan.md Bolum 2.3). ABORT/ESTOP istisnasi acikca R3'te
-# kodlanir, bu politika dosyasinda ayrica tekrar edilmez.
-fail_closed_varsayilan: true
+# Missing/stale/NaN/invalid/contradictory data produces a DENY BY DEFAULT
+# (paper Sec. 2.3). The ABORT/ESTOP exception is explicitly encoded in R3
+# and is not repeated separately in this policy file.
+fail_closed_default: true

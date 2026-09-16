@@ -1,0 +1,9 @@
+{
+  "method": "Independent check based on the course specification SS6.10 (risk_policy.yaml NOT USED)",
+  "findings": {
+    "risk_policy_asymmetry": "risk_policy.yaml treats stage 8 as high-risk and stage 10 as low-risk; specification SS6.10 defines both as the same 45% slope system, without distinguishing them -- the ASYMMETRY is specific to risk_policy.yaml and is NOT confirmed by the specification."
+  },
+  "allow_cases_checked": 208,
+  "flagged_by_specification": 0,
+  "details": []
+}

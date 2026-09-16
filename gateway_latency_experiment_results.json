@@ -1,6 +1,6 @@
 {
-  "schema": "gateway-gecikme/v1",
-  "akislar": [
+  "schema": "gateway-latency/v1",
+  "flows": [
     {
       "n": 1000,
       "mean_ms": 1.0971490580195677,
@@ -10,9 +10,9 @@
       "p95_ms": 2.7429959991422947,
       "p99_ms": 4.657773000872112,
       "max_ms": 7.3412359997746535,
-      "akis": "resume_allow_gateway",
       "timeout": 0,
-      "beklenmeyen_konu": 0
+      "flow": "resume_allow_gateway",
+      "unexpected_topic": 0
     },
     {
       "n": 1000,
@@ -23,9 +23,9 @@
       "p95_ms": 1.939533000040683,
       "p99_ms": 4.2815439992409665,
       "max_ms": 6.106770999394939,
-      "akis": "skip_deny_gateway",
       "timeout": 0,
-      "beklenmeyen_konu": 0
+      "flow": "skip_deny_gateway",
+      "unexpected_topic": 0
     },
     {
       "n": 1000,
@@ -36,9 +36,9 @@
       "p95_ms": 2.1873999994568294,
       "p99_ms": 4.137683001317782,
       "max_ms": 7.314446000236785,
-      "akis": "start8_deny_gateway_pahali_R1_TF_lookup",
       "timeout": 0,
-      "beklenmeyen_konu": 0
+      "flow": "start8_deny_gateway_expensive_R1_TF_lookup",
+      "unexpected_topic": 0
     },
     {
       "n": 1000,
@@ -49,9 +49,9 @@
       "p95_ms": 1.4781740010221256,
       "p99_ms": 3.431092000028002,
       "max_ms": 4.94308099951013,
-      "akis": "resume_allow_relay_taban_cizgisi",
       "timeout": 0,
-      "beklenmeyen_konu": 0
+      "flow": "resume_allow_relay_baseline",
+      "unexpected_topic": 0
     }
   ]
 }

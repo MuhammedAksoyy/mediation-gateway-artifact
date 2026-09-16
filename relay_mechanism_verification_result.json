@@ -1,0 +1,41 @@
+{
+  "schema": "robovis-relay-repro/v1",
+  "purpose": "To deliberately reconstruct and verify the mechanism behind the two unexplained historical records in Section VII ('gateway correctly denied, executor moved anyway').",
+  "method": [
+    "1. Clean sim started (gateway on, test_hold_stage=true test_stage_id=3). Single publisher verified (/mission/command -> mediation_gateway only).",
+    "2. An independent command_relay node was started ALONGSIDE the gateway WITHOUT shutting it down (mimics the scenario of a relay left over from an earlier gateway-disabled run).",
+    "3. Verified via 'ros2 topic info --verbose' that there are 2 publishers on /mission/command.",
+    "4. A SKIP command, which the gateway ALWAYS denies, was published to /mission/command_raw; /mission/status and /mediation/rejected were observed before/after.",
+    "5. At the same time, k3_gateway_critical_matrix.py --case resume_low_risk_allow was run to test whether the preflight defense catches this condition."
+  ],
+  "attempts": [
+    {
+      "repeat": 1,
+      "prior_stage": 3,
+      "prior_stage_name": "Yan Eğim",
+      "command": "SKIP (command=3)",
+      "gateway_decision": "DENIED",
+      "gateway_reason": "R4:skip_ortak_kanalda_varsayilan_ret",
+      "post_stage": 4,
+      "post_stage_name": "Dik Engel",
+      "result": "MEDIATION_INCOMPLETE: gateway correctly denied, executor advanced anyway"
+    },
+    {
+      "repeat": 2,
+      "prior_stage": 4,
+      "prior_stage_name": "Dik Engel",
+      "command": "SKIP (command=3)",
+      "gateway_decision": "DENIED",
+      "gateway_reason": "R4:skip_ortak_kanalda_varsayilan_ret",
+      "post_stage": 5,
+      "post_stage_name": "Trafik Konileri",
+      "result": "MEDIATION_INCOMPLETE: gateway correctly denied, executor advanced anyway"
+    }
+  ],
+  "reproducibility": "2/2, fully deterministic. The mechanism triggered EVERY TIME the condition was deliberately set up.",
+  "defense_verification": {
+    "vehicle": "k3_gateway_critical_matrix.py preflight check",
+    "result": "PREFLIGHT FAILURE correctly detected: unexpected publisher ['command_relay'], experiment halted before producing data."
+  },
+  "result_summary": "Section VII's 'plausible mechanism, root cause not established' wording no longer applies -- the mechanism was DELIBERATELY reconstructed and VERIFIED across 2/2 repeats. It was also live-verified that the hardened harness catches this condition and refuses to produce data."
+}

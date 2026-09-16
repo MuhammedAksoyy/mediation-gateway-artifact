@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <policy version="0.2.0">
   <enclaves>
-    <!-- gateway_real: /mission/command'a YAZMA izni olan TEK kimlik,
-         gercek mediation_gateway.py'nin karsiligi. -->
+    <!-- gateway_real: the ONLY identity with WRITE permission to
+         /mission/command, the counterpart of the real mediation_gateway.py. -->
     <enclave path="/gateway_real">
       <profiles>
         <profile ns="/" node="gateway_pub_node">
@@ -27,8 +27,8 @@
       </profiles>
     </enclave>
 
-    <!-- executor_real: yalnizca OKUMA izni — gercek mission_executor.py'nin
-         karsiligi. -->
+    <!-- executor_real: READ-only permission — the counterpart of the real
+         mission_executor.py. -->
     <enclave path="/executor_real">
       <profiles>
         <profile ns="/" node="executor_sub_node">
@@ -53,10 +53,10 @@
       </profiles>
     </enclave>
 
-    <!-- rogue_real: GECERLI SROS2 kimligi (keystore'dan uretilmis) AMA
-         mission/command'a yazma izni KASITLI OLARAK YOK — gercek sistemde
-         ele gecirilmis/kotu niyetli bir node'un gateway'i BYPASS ederek
-         dogrudan komut kanalina yazma girisimini temsil eder. -->
+    <!-- rogue_real: a VALID SROS2 identity (generated from the keystore) BUT
+         INTENTIONALLY WITHOUT write permission to mission/command — in the
+         real system it represents a compromised/malicious node attempting to
+         BYPASS the gateway and write directly to the command channel. -->
     <enclave path="/rogue_real">
       <profiles>
         <profile ns="/" node="rogue_pub_node">

@@ -17,9 +17,9 @@ from pathlib import Path
 import e2e_harness as eh
 
 ROOT = Path(__file__).resolve().parent
-ANALYSIS = ROOT / "analiz_0b_sonuc.json"
+ANALYSIS = ROOT / "analysis_0b_result.json"
 CATALOG = ROOT / "scenario_catalog.yaml"
-OUT = ROOT / "resume_skip_sonuclari.jsonl"
+OUT = ROOT / "resume_skip_experiment_results.jsonl"
 _SHARED_PROC = None
 _SHARED_LOGF = None
 
@@ -27,7 +27,7 @@ _SHARED_LOGF = None
 def cli_status():
     """Fallback status read for DDS observers that joined too early."""
     try:
-        p = eh.calistir(["ros2", "topic", "echo", "--once", "/mission/status"], timeout=5)
+        p = eh.run_cmd(["ros2", "topic", "echo", "--once", "/mission/status"], timeout=5)
         if p.returncode != 0:
             return None
         data = next((x for x in eh.yaml.safe_load_all(p.stdout) if isinstance(x, dict)), None)
@@ -38,7 +38,7 @@ def cli_status():
 
 def publish(command: int, target: int = 0) -> bool:
     try:
-        completed = eh.calistir([
+        completed = eh.run_cmd([
             "ros2", "topic", "pub", "--once", "/mission/command",
             "karamuhafiz_msgs/msg/StageCommand",
             f"{{command: {command}, target_stage: {target}}}",
@@ -51,7 +51,7 @@ def publish(command: int, target: int = 0) -> bool:
 def wait_status(stage=None, status=None, timeout=15):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        d = eh.mission_status_oku(referans_zaman=0.0, zaman_asimi=1) or cli_status()
+        d = eh.read_mission_status(reference_time=0.0, timeout=1) or cli_status()
         if d and (stage is None or d["stage"] == stage) and (status is None or d["status"] == status):
             return d
         time.sleep(0.2)
@@ -62,7 +62,7 @@ def establish_running_stage(stage: int, pause: bool) -> bool:
     """Enter a stage and, for RESUME, pause at first RUNNING observation."""
     deadline = time.time() + 90
     while time.time() < deadline:
-        current = eh.mission_status_oku(referans_zaman=0.0, zaman_asimi=1) or cli_status()
+        current = eh.read_mission_status(reference_time=0.0, timeout=1) or cli_status()
         if current and current["stage"] == stage:
             if not pause:
                 return True
@@ -73,18 +73,18 @@ def establish_running_stage(stage: int, pause: bool) -> bool:
 
 
 def run_case(case, scenarios):
-    sid = case["senaryo"]
+    sid = case["scenario"]
     scenario = scenarios[sid]
-    command = {"RESUME": 2, "SKIP": 3}[case["komut"]]
-    target = int(case.get("hedef_asama") or 0)
-    result = {"model": case.get("model"), "senaryo": sid,
-              "tekrar": case.get("tekrar", 0), "komut": command,
-              "hedef_asama": target, "sonuc": "inconclusive"}
+    command = {"RESUME": 2, "SKIP": 3}[case["command"]]
+    target = int(case.get("target_stage") or 0)
+    result = {"model": case.get("model"), "scenario": sid,
+              "repeat": case.get("repeat", 0), "command": command,
+              "target_stage": target, "result": "inconclusive"}
     shared = _SHARED_PROC is not None
     if shared:
         proc, logf = _SHARED_PROC, _SHARED_LOGF
     else:
-        log = f"/tmp/k3_resume_skip_{sid}_{case.get('tekrar', 0)}.log"
+        log = f"/tmp/k3_resume_skip_{sid}_{case.get('repeat', 0)}.log"
         launch = (
             "source /opt/ros/humble/setup.bash && "
             f"source {ROOT.parent}/install/setup.bash && "
@@ -93,7 +93,7 @@ def run_case(case, scenarios):
             "use_mediation_gateway:=false use_llm_mission_planner:=false use_gui:=false "
             "test_hold_stage:=true test_stage_id:=3"
         )
-        proc, logf = eh.setsid_baslat(launch, log)
+        proc, logf = eh.setsid_start(launch, log)
     try:
         # Nav2/Gazebo discovery is not complete when the launch process first
         # appears; wait for the executor topic graph before setup.
@@ -102,35 +102,35 @@ def run_case(case, scenarios):
         # Do not assume a fixed Gazebo startup time; wait for a fresh status
         # sample from this launch's executor before publishing setup commands.
         if wait_status(timeout=90) is None:
-            result["detay"] = "executor_status_yayini_baslamadi"
+            result["detail"] = "executor_status_publish_not_started"
             return result
-        eh._DINLEYICI.gecisleri_sifirla()
-        bd = scenario.get("baslangic_durumu", {})
+        eh._LISTENER.reset_transitions()
+        bd = scenario.get("initial_state", {})
         # Use a long-running, non-restricted stage as the deterministic
         # pause point. Restricted-stage policy cases are covered separately
         # by K4; here we test the actual RESUME/SKIP executor semantics.
         setup_stage = 3 if command == 2 else 7
         if not establish_running_stage(setup_stage, pause=(command == 2)):
-            result["detay"] = "setup_stage_kurulamadi"
+            result["detail"] = "setup_stage_not_established"
             return result
         ref = time.time()
         if not publish(command, target):
-            result["detay"] = "komut_yayinlanamadi"
+            result["detail"] = "command_publish_failed"
             return result
         time.sleep(5)
-        after = eh.mission_status_oku(referans_zaman=ref, zaman_asimi=5)
-        trace = eh._DINLEYICI.gecisleri_al(ref)
-        result.update({"sonra_durum": after, "gecisler": trace})
+        after = eh.read_mission_status(reference_time=ref, timeout=5)
+        trace = eh._LISTENER.get_transitions(ref)
+        result.update({"post_state": after, "transitions": trace})
         if after is None:
-            result["detay"] = "son_durum_yok"
+            result["detail"] = "no_final_state"
         else:
-            result["sonuc"] = "tamamlandi"
-            result["detay"] = "zaman_serisi_kaydedildi"
+            result["result"] = "completed"
+            result["detail"] = "time_series_recorded"
     finally:
         if not shared:
-            eh.pgid_oldur(proc.pid)
+            eh.pgid_kill(proc.pid)
             logf.close()
-            eh.calistir(["bash", str(ROOT.parent / "cleanup_klon.sh")], timeout=20)
+            eh.run_cmd(["bash", str(ROOT.parent / "cleanup_klon.sh")], timeout=20)
     return result
 
 
@@ -144,10 +144,10 @@ def main():
     ap.add_argument("--force-command", choices=("RESUME", "SKIP"))
     args = ap.parse_args()
     analysis = json.loads(ANALYSIS.read_text(encoding="utf-8"))
-    cases = [x for x in analysis["detaylar"] if x.get("komut") in ("RESUME", "SKIP")]
+    cases = [x for x in analysis["details"] if x.get("command") in ("RESUME", "SKIP")]
     if args.force_command:
-        cases = [x for x in cases if x.get("komut") == args.force_command]
-    scenarios = {x["id"]: x for x in eh.yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["senaryolar"]}
+        cases = [x for x in cases if x.get("command") == args.force_command]
+    scenarios = {x["id"]: x for x in eh.yaml.safe_load(CATALOG.read_text(encoding="utf-8"))["scenarios"]}
     if args.limit:
         cases = cases[:args.limit]
     existing = set()
@@ -157,13 +157,13 @@ def main():
                 old = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if old.get("sonuc") == "tamamlandi":
-                old_command = {2: "RESUME", 3: "SKIP"}.get(old.get("komut"), old.get("komut"))
-                existing.add((old.get("model"), old.get("senaryo"), old.get("tekrar"), old_command))
+            if old.get("result") == "completed":
+                old_command = {2: "RESUME", 3: "SKIP"}.get(old.get("command"), old.get("command"))
+                existing.add((old.get("model"), old.get("scenario"), old.get("repeat"), old_command))
     if not args.force_command:
-        cases = [c for c in cases if (c.get("model"), c.get("senaryo"), c.get("tekrar", 0), c.get("komut")) not in existing]
+        cases = [c for c in cases if (c.get("model"), c.get("scenario"), c.get("repeat", 0), c.get("command")) not in existing]
     global _SHARED_PROC, _SHARED_LOGF
-    eh._DINLEYICI = eh.DurumDinleyici()
+    eh._LISTENER = eh.StateListener()
     launch_log = "/tmp/k3_single_session.log"
     launch = (
         "source /opt/ros/humble/setup.bash && "
@@ -173,24 +173,24 @@ def main():
         "use_mediation_gateway:=false use_llm_mission_planner:=false use_gui:=false "
         "test_hold_stage:=true test_stage_id:=3"
     )
-    _SHARED_PROC, _SHARED_LOGF = eh.setsid_baslat(launch, launch_log)
+    _SHARED_PROC, _SHARED_LOGF = eh.setsid_start(launch, launch_log)
     try:
         time.sleep(20)
         if wait_status(timeout=90) is None:
-            raise RuntimeError("executor_status_yayini_baslamadi")
+            raise RuntimeError("executor_status_publish_not_started")
         for case in cases:
-            stage = 3 if case["komut"] == "RESUME" else 7
-            eh.calistir(["ros2", "param", "set", "/mission_executor",
+            stage = 3 if case["command"] == "RESUME" else 7
+            eh.run_cmd(["ros2", "param", "set", "/mission_executor",
                          "test_stage_id", str(stage)], timeout=10)
-            eh.calistir(["ros2", "param", "set", "/mission_executor",
+            eh.run_cmd(["ros2", "param", "set", "/mission_executor",
                          "test_hold_stage", "false"], timeout=10)
             publish(4)  # ABORT -> IDLE; next tick starts requested test stage
             if wait_status(status=0, timeout=10) is None:
-                result = {"model": case.get("model"), "senaryo": case["senaryo"],
-                          "tekrar": case.get("tekrar", 0), "komut": case["komut"],
-                          "sonuc": "inconclusive", "detay": "reset_idle_olmadi"}
+                result = {"model": case.get("model"), "scenario": case["scenario"],
+                          "repeat": case.get("repeat", 0), "command": case["command"],
+                          "result": "inconclusive", "detail": "reset_to_idle_failed"}
             else:
-                eh.calistir(["ros2", "param", "set", "/mission_executor",
+                eh.run_cmd(["ros2", "param", "set", "/mission_executor",
                              "test_hold_stage", "true"], timeout=10)
                 result = run_case(case, scenarios)
             with OUT.open("a", encoding="utf-8") as stream:
@@ -198,10 +198,10 @@ def main():
             print(json.dumps(result, ensure_ascii=False), flush=True)
     finally:
         if _SHARED_PROC is not None:
-            eh.pgid_oldur(_SHARED_PROC.pid)
+            eh.pgid_kill(_SHARED_PROC.pid)
             _SHARED_LOGF.close()
-            eh.calistir(["bash", str(ROOT.parent / "cleanup_klon.sh")], timeout=20)
-        eh._DINLEYICI.kapat()
+            eh.run_cmd(["bash", str(ROOT.parent / "cleanup_klon.sh")], timeout=20)
+        eh._LISTENER.close()
 
 
 if __name__ == "__main__":

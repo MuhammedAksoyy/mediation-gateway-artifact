@@ -62,7 +62,7 @@ def main():
     cases.append(check("abort_target8_not_r4_denied", g._r4_start_tek_asama_modu(StageCommand.CMD_ABORT, 8)[0], "target ignored for abort"))
     result = {"schema": "k4-regression/v1", "total": len(cases),
               "passed": sum(c["pass"] for c in cases), "cases": cases}
-    (ROOT / "k4_regresyon_sonuc.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (ROOT / "k4_regression_result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     raise SystemExit(0 if result["passed"] == result["total"] else 1)
 

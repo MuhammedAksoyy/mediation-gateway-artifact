@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""e2e_harness.py — RoboVis plani Asama 0a-3.
+"""e2e_harness.py -- RoboVis plan, Stage 0a-3.
 
-Onceki `e2e_multi_model.sh`'in guvenilirlik hatasini (yeni kayit gelmezse
-"tail -n 1" ile ONCEKI senaryonun kaydini tekrar yazma) DUZELTIR:
-  - Her istek /mission/nl_task metnine "[RUN:<id>] " oneki ile gonderilir.
-  - Planlayici kaydi, JSONL dosyasinin byte-offset'i takip edilerek yalnizca
-    o run_id'ye ait YENI satirdan okunur.
-  - Gateway karari, gateway log dosyasinin byte-offset'i ile ayni sekilde
-    yalnizca komut gonderiminden SONRAKI yeni satirlardan okunur.
-  - Executor'in GERCEK son durumu /mission/status'tan once/sonra okunup
-    katalogdaki beklenenle karsilastirilir.
-  - Bu UC kanittan (planlayici kaydi + gateway karari + executor durumu)
-    biri eksikse sonuc "inconclusive"/"timeout" olarak isaretlenir; asla
-    sessizce basari/basarisizliga cevrilmez (RoboVis plani Bolum 0, madde 2).
+FIXES the reliability bug of the previous `e2e_multi_model.sh` (re-writing
+the PREVIOUS scenario's record via "tail -n 1" when a new record hasn't
+arrived yet):
+  - Every request is sent to /mission/nl_task text with a "[RUN:<id>] "
+    prefix.
+  - The planner record is read only from the NEW line belonging to that
+    run_id, by tracking the JSONL file's byte offset.
+  - The gateway decision is likewise read only from the new lines AFTER
+    the command was sent, by tracking the gateway log file's byte offset.
+  - The executor's ACTUAL final state is read before/after /mission/status
+    and compared against what the catalog expects.
+  - If ANY of these THREE pieces of evidence (planner record + gateway
+    decision + executor state) is missing, the result is marked
+    "inconclusive"/"timeout"; it is NEVER silently converted into a
+    success/failure (RoboVis plan, Section 0, item 2).
 
-150 kosunun (15 senaryo x 10 model) bir ORAN deneyi DEGIL, KAPSAMA/
-ENTEGRASYON testi oldugu unutulmamali (Bolum B). Oran iddialari yalnizca
-tekrarli standalone korpustan (sonuclar_v2.json) gelir.
+Remember that the 150 runs (15 scenarios x 10 models) are a COVERAGE/
+INTEGRATION test, NOT a RATE experiment (Section B). Rate claims come only
+from the repeated, standalone corpus (results_v2.json).
 """
 import json
 import os
@@ -35,12 +38,12 @@ import rclpy
 from rclpy.node import Node
 from karamuhafiz_msgs.msg import MissionStatus, StageCommand
 
-KLON = Path("<WORKSPACE_ROOT>")
-KATALOG_YOLU = KLON / "deney_katalog" / "scenario_catalog.yaml"
-KAYIT_YOLU = Path.home() / "llm_mission_planner_kayitlari.jsonl"
-SONUC_YOLU = KLON / "deney_katalog" / "e2e_sonuclar.jsonl"
+ROOT_DIR = Path("<WORKSPACE_ROOT>")
+CATALOG_PATH = ROOT_DIR / "experiment_catalog" / "scenario_catalog.yaml"
+RECORD_PATH = Path.home() / "llm_mission_planner_records.jsonl"
+RESULT_PATH = ROOT_DIR / "experiment_catalog" / "e2e_results.jsonl"
 
-MODELLER = [
+MODELS = [
     ("mistral-nemo:12b", "ollama"),
     ("mistral:7b-instruct-q4_K_M", "ollama"),
     ("llama3:latest", "ollama"),
@@ -52,57 +55,58 @@ MODELLER = [
     ("openai/gpt-oss-120b", "nvidia"),
     ("deepseek-ai/deepseek-v4-flash-0731", "nvidia"),
 ]
-# NOT: moonshotai/kimi-k3, NVIDIA API'de kalici HTTP 429 (rate limit)
-# verdigi icin (2026-08-30 tam kosuda 12/12 deneme basarisiz) katalogdan
-# cikarilip deepseek ile degistirildi -- kullanici onayi. "deepseek-ai/
-# deepseek-v3.1" GECERSIZ model adi cikti (404) -- NVIDIA API'de
-# mevcut olanlar: deepseek-coder-6.7b-instruct, deepseek-v4-flash-0731,
-# deepseek-v4-pro-0813. v4-pro asiri yavas (60sn+ curl timeout), flash
-# saniyeler icinde yanit verdi -- flash secildi.
+# NOTE: moonshotai/kimi-k3 was removed from the catalog and replaced with
+# deepseek because the NVIDIA API gave it a persistent HTTP 429 (rate
+# limit) (2026-08-30 full run: 12/12 attempts failed) -- with user
+# approval. "deepseek-ai/deepseek-v3.1" turned out to be an INVALID model
+# name (404) -- what's actually available on the NVIDIA API:
+# deepseek-coder-6.7b-instruct, deepseek-v4-flash-0731, deepseek-v4-pro-0813.
+# v4-pro is extremely slow (60s+ curl timeout); flash responded within
+# seconds -- flash was chosen.
 
-PLANLAYICI_TIMEOUT_S = 90
+PLANNER_TIMEOUT_S = 90
 GATEWAY_TIMEOUT_S = 30
-DURUM_TIMEOUT_S = 8
+STATE_TIMEOUT_S = 8
 
 
-def calistir(cmd, timeout=None, env=None):
+def run_cmd(cmd, timeout=None, env=None):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
 
 
-def setsid_baslat(cmd_str, logfile_path):
-    """Yeni bir process group/session icinde baslatir; donen PID ayni
-    zamanda PGID'dir (setsid ile). Yalnizca bu PGID'ye sinyal gonderilerek
-    temizlenir -- isim deseniyle pkill ASLA kullanilmaz."""
+def setsid_start(cmd_str, logfile_path):
+    """Starts a new process group/session; the returned PID is also the
+    PGID (via setsid). Cleanup ONLY ever sends a signal to this PGID --
+    pkill by name pattern is NEVER used."""
     logf = open(logfile_path, "wb")
-    # DIKKAT: shell=True varsayilan olarak /bin/sh kullanir; 'source' bash'e
-    # ozgudur, sh'de yoktur ('source: not found' hatasiyla TUM komut sessizce
-    # basarisiz olur). executable='/bin/bash' ile acikca bash zorlanir.
+    # NOTE: shell=True uses /bin/sh by default; 'source' is a bash-ism and
+    # doesn't exist in sh (the ENTIRE command fails silently with
+    # 'source: not found'). executable='/bin/bash' explicitly forces bash.
     p = subprocess.Popen(
         cmd_str, shell=True, executable="/bin/bash",
         stdout=logf, stderr=subprocess.STDOUT,
-        preexec_fn=os.setsid, cwd=str(KLON))
+        preexec_fn=os.setsid, cwd=str(ROOT_DIR))
     return p, logf
 
 
-def pgid_oldur(pid):
+def pgid_kill(pid):
     try:
         os.killpg(pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
 
 
-def dosya_boyu(path):
+def file_size(path):
     try:
         return os.path.getsize(path)
     except FileNotFoundError:
         return 0
 
 
-def yeni_planlayici_kaydi_ara(offset, run_id, timeout):
+def find_new_planner_record(offset, run_id, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with open(KAYIT_YOLU, "r", encoding="utf-8") as f:
+            with open(RECORD_PATH, "r", encoding="utf-8") as f:
                 f.seek(offset)
                 for line in f:
                     line = line.strip()
@@ -120,104 +124,106 @@ def yeni_planlayici_kaydi_ara(offset, run_id, timeout):
     return None
 
 
-def yeni_gateway_karari_ara(gw_log_path, offset, timeout):
+def find_new_gateway_decision(gw_log_path, offset, timeout):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             with open(gw_log_path, "rb") as f:
                 f.seek(offset)
-                veri = f.read().decode("utf-8", errors="ignore")
-            for line in veri.splitlines():
-                if "ONAYLANDI" in line or "REDDEDİLDİ" in line:
-                    yeni_offset = offset + len(veri.encode("utf-8"))
-                    karar = "ALLOW" if "ONAYLANDI" in line else "DENY"
-                    return karar, line.strip(), yeni_offset
+                data = f.read().decode("utf-8", errors="ignore")
+            for line in data.splitlines():
+                if "APPROVED" in line or "REJECTED" in line:
+                    new_offset = offset + len(data.encode("utf-8"))
+                    decision = "ALLOW" if "APPROVED" in line else "DENY"
+                    return decision, line.strip(), new_offset
         except FileNotFoundError:
             pass
         time.sleep(1.0)
     return None, None, offset
 
 
-class DurumDinleyici:
-    """UCUNCU DUZELTME (kok neden): 'ros2 topic echo --once' her cagrida
-    YENI bir DDS katilimcisi kurup yikiyordu -- ayni sistemde ayni anda
-    bazen 1sn'de, bazen 8sn+ zaman asimina ugrayarak basarisiz oluyordu
-    (deneme sayisini/suresini artirmak bunu SANSA birakiyordu, cozmuyordu).
-    Dogru cozum: harness'in KENDI surecinde, TUM kosu boyunca (her senaryo
-    ve her model-basi sim yeniden baslatmasi dahil) TEK bir kalici rclpy
-    abonesi acmak -- kesif maliyeti bir kere odenir, sonraki her okuma
-    yalnizca son alinan mesaji bellekten dondurur (yeni process/kesif yok).
-    Sim her yeniden baslatildiginda ESKI yayinci kaybolur, DDS otomatik
-    olarak YENI mission_executor'a yeniden eslesir -- bu arka planda,
-    engellemeden gerceklesir."""
+class StateListener:
+    """THIRD FIX (root cause): 'ros2 topic echo --once' set up and tore
+    down a NEW DDS participant on every call -- on the same system this
+    would sometimes time out in 1s, sometimes in 8s+ (increasing the
+    number of attempts/duration left this to CHANCE, it didn't fix it).
+    Correct solution: open a SINGLE persistent rclpy subscriber in the
+    harness's OWN process for the ENTIRE run (including every scenario
+    and every per-model sim restart) -- the discovery cost is paid once,
+    every subsequent read just returns the last received message from
+    memory (no new process/discovery). Every time the sim restarts the
+    OLD publisher disappears and DDS automatically re-matches to the NEW
+    mission_executor -- this happens in the background, without
+    blocking."""
 
     def __init__(self):
-        self._kilit = threading.Lock()
-        self._son_mesaj = None
-        self._son_alim_zamani = 0.0
-        self._gecisler = []
-        self._son_imza = None
+        self._lock = threading.Lock()
+        self._last_msg = None
+        self._last_receive_time = 0.0
+        self._transitions = []
+        self._last_signature = None
         rclpy.init(args=None)
-        self._node = Node("e2e_harness_durum_dinleyici")
+        self._node = Node("e2e_harness_state_listener")
         self._node.create_subscription(
-            MissionStatus, "/mission/status", self._geri_cagri, 10)
-        self._komut_pub = self._node.create_publisher(StageCommand, "/mission/command", 10)
+            MissionStatus, "/mission/status", self._callback, 10)
+        self._command_pub = self._node.create_publisher(StageCommand, "/mission/command", 10)
         self._executor_thread = threading.Thread(
             target=rclpy.spin, args=(self._node,), daemon=True)
         self._executor_thread.start()
 
-    def _geri_cagri(self, msg):
-        with self._kilit:
-            imza = (int(msg.stage), int(msg.status), bool(msg.estop_active),
+    def _callback(self, msg):
+        with self._lock:
+            signature = (int(msg.stage), int(msg.status), bool(msg.estop_active),
                     str(msg.status_detail))
-            if imza != self._son_imza:
-                self._gecisler.append({
+            if signature != self._last_signature:
+                self._transitions.append({
                     "t": time.time(), "stage": int(msg.stage),
                     "status": int(msg.status),
                     "stage_name": str(msg.stage_name),
                     "estop_active": bool(msg.estop_active),
                     "status_detail": str(msg.status_detail),
                 })
-                self._son_imza = imza
-            self._son_mesaj = msg
-            self._son_alim_zamani = time.time()
+                self._last_signature = signature
+            self._last_msg = msg
+            self._last_receive_time = time.time()
 
-    def gecisleri_al(self, referans_zaman=0.0):
+    def get_transitions(self, reference_time=0.0):
         """Return time-stamped stage/status transitions after a test boundary."""
-        with self._kilit:
-            return [dict(x) for x in self._gecisler if x["t"] >= referans_zaman]
+        with self._lock:
+            return [dict(x) for x in self._transitions if x["t"] >= reference_time]
 
-    def gecisleri_sifirla(self):
-        with self._kilit:
-            self._gecisler.clear()
-            self._son_imza = None
+    def reset_transitions(self):
+        with self._lock:
+            self._transitions.clear()
+            self._last_signature = None
 
-    def komut_yayinla_dogrudan(self, command, target_stage=0):
+    def publish_command_direct(self, command, target_stage=0):
         """Publish through the persistent ROS node to avoid CLI discovery races."""
         deadline = time.time() + 5.0
-        while self._komut_pub.get_subscription_count() == 0 and time.time() < deadline:
+        while self._command_pub.get_subscription_count() == 0 and time.time() < deadline:
             time.sleep(0.05)
-        if self._komut_pub.get_subscription_count() == 0:
+        if self._command_pub.get_subscription_count() == 0:
             return False
         msg = StageCommand()
         msg.command = int(command)
         msg.target_stage = int(target_stage)
         # RELIABLE delivery: publish twice across two spin intervals so a
         # freshly discovered executor cannot miss the transition command.
-        self._komut_pub.publish(msg)
+        self._command_pub.publish(msg)
         time.sleep(0.1)
-        self._komut_pub.publish(msg)
+        self._command_pub.publish(msg)
         return True
 
-    def durum_oku(self, referans_zaman=0.0, zaman_asimi=DURUM_TIMEOUT_S):
-        """referans_zaman'dan SONRA alinmis bir mesaj bekler -- sim yeniden
-        baslatilmadan onceki eski/bayat mesaji YANLISLIKLA taze sanmamak icin
-        (planlayici/gateway kanitlarindaki byte-offset yaklasimiyla ayni ilke)."""
-        deadline = time.time() + zaman_asimi
+    def read_state(self, reference_time=0.0, timeout=STATE_TIMEOUT_S):
+        """Waits for a message received AFTER reference_time -- so an old/
+        stale message from before the sim restart isn't MISTAKENLY treated
+        as fresh (same principle as the byte-offset approach used for the
+        planner/gateway evidence)."""
+        deadline = time.time() + timeout
         while time.time() < deadline:
-            with self._kilit:
-                if self._son_alim_zamani > referans_zaman and self._son_mesaj is not None:
-                    m = self._son_mesaj
+            with self._lock:
+                if self._last_receive_time > reference_time and self._last_msg is not None:
+                    m = self._last_msg
                     return {
                         "stage": m.stage, "stage_name": m.stage_name,
                         "status": m.status, "status_detail": m.status_detail,
@@ -228,7 +234,7 @@ class DurumDinleyici:
             time.sleep(0.1)
         return None
 
-    def kapat(self):
+    def close(self):
         rclpy.shutdown()
         self._executor_thread.join(timeout=5)
         try:
@@ -237,82 +243,85 @@ class DurumDinleyici:
             pass
 
 
-_DINLEYICI = None
+_LISTENER = None
 
 
-def mission_status_oku(referans_zaman=0.0, zaman_asimi=DURUM_TIMEOUT_S):
-    if _DINLEYICI is None:
+def read_mission_status(reference_time=0.0, timeout=STATE_TIMEOUT_S):
+    if _LISTENER is None:
         return None
-    return _DINLEYICI.durum_oku(referans_zaman, zaman_asimi)
+    return _LISTENER.read_state(reference_time, timeout)
 
 
-def komut_yayinla(run_id, gorev):
-    """Basarisiz/timeout olursa False doner -- ASLA istisna firlatip tum
-    harness'i cokertmez; senaryo_calistir bunu 'timeout' sonucuna cevirir.
+def publish_command(run_id, task):
+    """Returns False on failure/timeout -- NEVER raises an exception that
+    would crash the whole harness; run_scenario turns this into a
+    'timeout' result.
 
-    DUZELTME (duman testi bulgusu): elle "'" -> "\\'" kacisi, kesme isareti
-    iceren gorev metinlerinde (or. Y2: "E-STOP'u") ros2 CLI'nin YAML
-    ayristiricisini bozup sessiz timeout'a yol aciyordu. yaml.dump ile
-    duzgun/guvenli YAML uretimi kullanilir."""
-    metin = f"[RUN:{run_id}] {gorev}"
-    yaml_govde = yaml.dump({"data": metin}, default_flow_style=True,
+    FIX (smoke-test finding): manually escaping "'" -> "\\'" was breaking
+    ros2 CLI's YAML parser for task texts containing an apostrophe (e.g.
+    Y2: "the E-STOP's"), causing a silent timeout. Proper/safe YAML
+    generation via yaml.dump is used instead."""
+    text = f"[RUN:{run_id}] {task}"
+    yaml_body = yaml.dump({"data": text}, default_flow_style=True,
                             allow_unicode=True).strip()
     try:
-        calistir([
+        run_cmd([
             "ros2", "topic", "pub", "--once", "/mission/nl_task",
-            "std_msgs/msg/String", yaml_govde,
+            "std_msgs/msg/String", yaml_body,
         ], timeout=15)
         return True
     except subprocess.TimeoutExpired:
         return False
 
 
-DURUM_KURULUM_TIMEOUT_S = 90
+STATE_SETUP_TIMEOUT_S = 90
 
 
-def durum_kur(senaryo):
-    """Kataloğun baslangic_durumu'nu GERCEKTEN kurar. CANLI kanit (2026-08-30
-    duman testi): NM1 (zararsiz, ALLOW beklenen) bile IDLE'dan RESUME
-    denedigi icin R4 tarafindan yanlislikla reddedildi; K2/K3/Y1-Y3 gibi
-    RUNNING veya STOP_WAIT+ESTOP gerektiren senaryolar taze sim IDLE'dan
-    baslatildiginda kataloğun tanimladigi kosuldan TAMAMEN farkli bir
-    durumu test ediyordu. Gateway'i BILEREK atlayip dogrudan /mission/command'a
-    yayinlar (bu, TEST EDILEN mediation etkilesiminin bir parcasi DEGIL,
-    yalnizca baslangic sahnesini kurma adimidir -- gercek senaryo komutu
-    hala /mission/nl_task -> LLM -> gateway -> /mission/command yolundan
-    gecer). Basarisiz olursa (or. nav suresi asimi) senaryo 'inconclusive'
-    doner, asla sessizce yanlis baslangic durumuyla devam etmez."""
-    bd = senaryo.get("baslangic_durumu", {})
-    hedef_status = bd.get("mission_status", "IDLE")
-    if hedef_status == "IDLE":
-        return True  # taze sim zaten IDLE -- kurulum gerekmiyor
+def setup_state(scenario):
+    """ACTUALLY sets up the catalog's initial_state. LIVE evidence
+    (2026-08-30 smoke test): even NM1 (harmless, expected ALLOW) was
+    wrongly rejected by R4 because it attempted RESUME from IDLE;
+    scenarios like K2/K3/Y1-Y3 that require RUNNING or STOP_WAIT+ESTOP
+    were testing a state COMPLETELY different from what the catalog
+    defines when started from a fresh sim's IDLE state. This DELIBERATELY
+    bypasses the gateway and publishes directly to /mission/command (this
+    is NOT part of the mediation interaction being TESTED, it is only the
+    step that sets up the initial scene -- the actual scenario command
+    still goes through the /mission/nl_task -> LLM -> gateway ->
+    /mission/command path). If it fails (e.g. nav duration exceeded) the
+    scenario returns 'inconclusive', it never silently proceeds with the
+    wrong initial state."""
+    initial_state = scenario.get("initial_state", {})
+    target_status = initial_state.get("mission_status", "IDLE")
+    if target_status == "IDLE":
+        return True  # fresh sim is already IDLE -- no setup needed
 
-    hedef_stage = bd.get("stage")
-    ref = time.time()
+    target_stage = initial_state.get("stage")
+    ref_time = time.time()
     try:
-        calistir([
+        run_cmd([
             "ros2", "topic", "pub", "--once", "/mission/command",
             "karamuhafiz_msgs/msg/StageCommand",
-            f"{{command: 0, target_stage: {hedef_stage}}}",
+            f"{{command: 0, target_stage: {target_stage}}}",
         ], timeout=10)
     except subprocess.TimeoutExpired:
         return False
 
-    deadline = time.time() + DURUM_KURULUM_TIMEOUT_S
-    ulasti = False
+    deadline = time.time() + STATE_SETUP_TIMEOUT_S
+    reached = False
     while time.time() < deadline:
-        d = mission_status_oku(referans_zaman=ref, zaman_asimi=3)
-        if d and d.get("stage") == hedef_stage:
-            ulasti = True
+        d = read_mission_status(reference_time=ref_time, timeout=3)
+        if d and d.get("stage") == target_stage:
+            reached = True
             break
         time.sleep(1.0)
-    if not ulasti:
+    if not reached:
         return False
 
-    if hedef_status == "STOP_WAIT" and bd.get("estop_active"):
-        ref2 = time.time()
+    if target_status == "STOP_WAIT" and initial_state.get("estop_active"):
+        ref_time2 = time.time()
         try:
-            calistir([
+            run_cmd([
                 "ros2", "topic", "pub", "--once", "/mission/command",
                 "karamuhafiz_msgs/msg/StageCommand",
                 "{command: 5, target_stage: 0}",
@@ -321,7 +330,7 @@ def durum_kur(senaryo):
             return False
         deadline = time.time() + 10
         while time.time() < deadline:
-            d = mission_status_oku(referans_zaman=ref2, zaman_asimi=3)
+            d = read_mission_status(reference_time=ref_time2, timeout=3)
             if d and d.get("estop_active"):
                 return True
             time.sleep(0.5)
@@ -329,94 +338,94 @@ def durum_kur(senaryo):
     return True
 
 
-def senaryo_calistir(senaryo, model, provider, gw_log_path):
+def run_scenario(scenario, model, provider, gw_log_path):
     run_id = uuid.uuid4().hex[:12]
 
-    if not durum_kur(senaryo):
+    if not setup_state(scenario):
         return {
-            "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-            "run_id": run_id, "sonuc": "inconclusive",
-            "detay": "baslangic_durumu_kurulamadi",
+            "scenario_id": scenario["id"], "model": model, "provider": provider,
+            "run_id": run_id, "result": "inconclusive",
+            "detail": "initial_state_setup_failed",
         }
 
-    once_durum = mission_status_oku(referans_zaman=0.0, zaman_asimi=3.0)
+    prior_state = read_mission_status(reference_time=0.0, timeout=3.0)
 
-    planlayici_offset_once = dosya_boyu(KAYIT_YOLU)
-    gw_offset_once = dosya_boyu(gw_log_path)
+    planner_offset_before = file_size(RECORD_PATH)
+    gw_offset_before = file_size(gw_log_path)
 
-    komut_oncesi_zaman = time.time()
-    yayin_basarili = komut_yayinla(run_id, senaryo["dogal_dil_istemi"])
-    if not yayin_basarili:
+    pre_command_time = time.time()
+    publish_successful = publish_command(run_id, scenario["natural_language_prompt"])
+    if not publish_successful:
         return {
-            "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-            "run_id": run_id, "sonuc": "timeout",
-            "detay": "komut_yayinlanamadi",
+            "scenario_id": scenario["id"], "model": model, "provider": provider,
+            "run_id": run_id, "result": "timeout",
+            "detail": "command_publish_failed",
         }
 
-    planlayici_kaydi = yeni_planlayici_kaydi_ara(
-        planlayici_offset_once, run_id, PLANLAYICI_TIMEOUT_S)
-    if planlayici_kaydi is None:
+    planner_record = find_new_planner_record(
+        planner_offset_before, run_id, PLANNER_TIMEOUT_S)
+    if planner_record is None:
         return {
-            "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-            "run_id": run_id, "sonuc": "timeout",
-            "detay": "planlayici_kaydi_bulunamadi",
+            "scenario_id": scenario["id"], "model": model, "provider": provider,
+            "run_id": run_id, "result": "timeout",
+            "detail": "planner_record_not_found",
         }
 
-    gw_karari, gw_satiri, _ = yeni_gateway_karari_ara(
-        gw_log_path, gw_offset_once, GATEWAY_TIMEOUT_S)
-    if gw_karari is None:
+    gw_decision, gw_line, _ = find_new_gateway_decision(
+        gw_log_path, gw_offset_before, GATEWAY_TIMEOUT_S)
+    if gw_decision is None:
         return {
-            "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-            "run_id": run_id, "sonuc": "inconclusive",
-            "detay": "gateway_karari_bulunamadi",
-            "planlayici_kaydi": planlayici_kaydi,
+            "scenario_id": scenario["id"], "model": model, "provider": provider,
+            "run_id": run_id, "result": "inconclusive",
+            "detail": "gateway_decision_not_found",
+            "planner_record": planner_record,
         }
 
-    time.sleep(1.0)  # executor'in durumu isleme suresi
-    sonra_durum = mission_status_oku(referans_zaman=komut_oncesi_zaman,
-                                      zaman_asimi=DURUM_TIMEOUT_S)
-    if sonra_durum is None:
-        # DUZELTME: uc kanittan (planlayici + gateway + executor durumu)
-        # ucuncusu okunamadiysa "tamamlandi" DENMEZ -- dosya basindaki
-        # dokumante edilen kural ("asla sessizce basari/basarisizliga
-        # cevrilmez") artik gercekten uygulanir.
+    time.sleep(1.0)  # time for the executor to process the state
+    post_state = read_mission_status(reference_time=pre_command_time,
+                                      timeout=STATE_TIMEOUT_S)
+    if post_state is None:
+        # FIX: if the third piece of evidence (planner + gateway + executor
+        # state) cannot be read, this is NOT labeled "completed" -- the rule
+        # documented at the top of the file ("never silently converted into
+        # success/failure") is now actually enforced.
         return {
-            "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-            "run_id": run_id, "sonuc": "inconclusive",
-            "detay": "executor_durumu_okunamadi",
-            "planlayici_kaydi": planlayici_kaydi,
-            "gateway_karari": gw_karari,
-            "gateway_satiri": gw_satiri,
-            "once_durum": once_durum,
+            "scenario_id": scenario["id"], "model": model, "provider": provider,
+            "run_id": run_id, "result": "inconclusive",
+            "detail": "executor_state_not_readable",
+            "planner_record": planner_record,
+            "gateway_decision": gw_decision,
+            "gateway_line": gw_line,
+            "prior_state": prior_state,
         }
 
     return {
-        "senaryo_id": senaryo["id"], "model": model, "provider": provider,
-        "run_id": run_id, "sonuc": "tamamlandi",
-        "planlayici_kaydi": planlayici_kaydi,
-        "gateway_karari": gw_karari,
-        "gateway_satiri": gw_satiri,
-        "once_durum": once_durum,
-        "sonra_durum": sonra_durum,
-        "beklenen_gateway_karari": senaryo.get("beklenen_gateway_karari"),
+        "scenario_id": scenario["id"], "model": model, "provider": provider,
+        "run_id": run_id, "result": "completed",
+        "planner_record": planner_record,
+        "gateway_decision": gw_decision,
+        "gateway_line": gw_line,
+        "prior_state": prior_state,
+        "post_state": post_state,
+        "expected_gateway_decision": scenario.get("expected_gateway_decision"),
     }
 
 
-TEKRAR_B = 3  # Aşama B'nin istatistiksel (tekrarlı) genişletmesi --
-# kullanıcı talebiyle (2026-08-30): tekrarsız 150-run zaten kapsama
-# kanıtı verdi (132/150, 0 bypass), ama "0 atlatma" iddiasını güven
-# aralığıyla desteklemek için her hücre TEKRAR_B kez koşuluyor.
+REPEAT_B = 3  # Statistical (repeated) extension of Stage B --
+# per user request (2026-08-30): the non-repeated 150-run already gave
+# coverage evidence (132/150, 0 bypasses), but to back the "0 bypasses"
+# claim with a confidence interval, every cell is run REPEAT_B times.
 
 
-def zaten_tamamlanan_oku():
-    """Devam-edilebilirlik: onceki bir kosu yarida kesilirse ayni
-    (model, senaryo_id, tekrar) tekrar kosulmasin -- yalnizca GERCEKTEN
-    'tamamlandi' olanlar atlanir (inconclusive/timeout/error tekrar
-    denenir, cunku tam olarak bunlari doldurmak istiyoruz)."""
-    tamamlanan = set()
-    if not SONUC_YOLU.exists():
-        return tamamlanan
-    with open(SONUC_YOLU, encoding="utf-8") as f:
+def read_already_completed():
+    """Resumability: if a previous run was interrupted partway, don't
+    re-run the same (model, scenario_id, repeat) again -- only entries that
+    ACTUALLY reached 'completed' are skipped (inconclusive/timeout/error
+    are retried, since filling exactly those in is the whole point)."""
+    completed = set()
+    if not RESULT_PATH.exists():
+        return completed
+    with open(RESULT_PATH, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -425,49 +434,50 @@ def zaten_tamamlanan_oku():
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if r.get("sonuc") == "tamamlandi":
-                tekrar = r.get("tekrar", 0)  # eski kayitlarda alan yok -> tekrar=0 sayilir
-                tamamlanan.add((r.get("model"), r.get("senaryo_id"), tekrar))
-    return tamamlanan
+            if r.get("result") == "completed":
+                repeat = r.get("repeat", 0)  # older records lack the field -> counted as repeat=0
+                completed.add((r.get("model"), r.get("scenario_id"), repeat))
+    return completed
 
 
 def main():
-    global _DINLEYICI
-    katalog = yaml.safe_load(open(KATALOG_YOLU, encoding="utf-8"))
-    senaryolar = katalog["senaryolar"]
+    global _LISTENER
+    catalog = yaml.safe_load(open(CATALOG_PATH, encoding="utf-8"))
+    scenarios = catalog["scenarios"]
 
-    yalniz_model = sys.argv[1] if len(sys.argv) > 1 else None
-    tamamlanan = zaten_tamamlanan_oku()
+    only_model = sys.argv[1] if len(sys.argv) > 1 else None
+    completed = read_already_completed()
 
-    SONUC_YOLU.parent.mkdir(parents=True, exist_ok=True)
-    if not SONUC_YOLU.exists():
-        SONUC_YOLU.touch()
+    RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if not RESULT_PATH.exists():
+        RESULT_PATH.touch()
 
-    # Tum kosu boyunca TEK kalici abone (bkz. DurumDinleyici docstring) --
-    # her senaryo/model sim'i yeniden baslatsa bile bu abone kapanmiyor,
-    # DDS otomatik olarak yeni yayinciya yeniden eslesiyor.
-    _DINLEYICI = DurumDinleyici()
+    # ONE persistent subscriber for the whole run (see StateListener
+    # docstring) -- this subscriber stays open even when each scenario/
+    # model restarts the sim; DDS automatically re-matches to the new
+    # publisher.
+    _LISTENER = StateListener()
 
-    # DUZELTME (duman testi bulgusu): senaryolar model-basina TEK bir
-    # paylasilan oturumda kosuluyordu -- bir senaryonun gercek etkisi
-    # (or. K3'un E-STOP'u GERCEKTEN tetiklemesi) sonraki TUM senaryolara
-    # sizip alakasiz red/onaylara yol aciyordu. Artik HER senaryo icin
-    # sim tamamen yeniden baslatiliyor (yavas ama kesin temiz -- plan
-    # Bolum 0a'da onceden kabul edilen sure maliyeti).
-    for model, provider in MODELLER:
-        if yalniz_model and model != yalniz_model:
+    # FIX (smoke-test finding): scenarios used to run in a SINGLE shared
+    # session per model -- one scenario's real effect (e.g. K3 ACTUALLY
+    # triggering E-STOP) leaked into ALL subsequent scenarios, causing
+    # unrelated rejections/approvals. Now the sim is COMPLETELY restarted
+    # for EVERY scenario (slower but reliably clean -- a time cost already
+    # accepted in plan Section 0a).
+    for model, provider in MODELS:
+        if only_model and model != only_model:
             continue
         print(f"\n=== MODEL: {model} ({provider}) ===", flush=True)
 
-        for senaryo in senaryolar:
-            for tekrar in range(TEKRAR_B):
-                if (model, senaryo["id"], tekrar) in tamamlanan:
+        for scenario in scenarios:
+            for repeat in range(REPEAT_B):
+                if (model, scenario["id"], repeat) in completed:
                     continue
-                if KAYIT_YOLU.exists():
-                    KAYIT_YOLU.unlink()
+                if RECORD_PATH.exists():
+                    RECORD_PATH.unlink()
 
-                etiket = f"{model.replace('/', '_').replace(':', '_')}_{senaryo['id']}_{tekrar}"
-                launch_log = f"/tmp/e2e_harness_{etiket}.log"
+                label = f"{model.replace('/', '_').replace(':', '_')}_{scenario['id']}_{repeat}"
+                launch_log = f"/tmp/e2e_harness_{label}.log"
                 cmd = (
                     "source /opt/ros/humble/setup.bash && "
                     "source <WORKSPACE_ROOT>/install/setup.bash && "
@@ -477,30 +487,30 @@ def main():
                     "use_gui:=false "
                     f"llm_provider:={provider} llm_model:={model}"
                 )
-                proc, logf = setsid_baslat(cmd, launch_log)
-                time.sleep(35)  # autonomy_start_delay (20s) + gazebo/gateway boot payi
+                proc, logf = setsid_start(cmd, launch_log)
+                time.sleep(35)  # autonomy_start_delay (20s) + gazebo/gateway boot margin
 
                 try:
-                    sonuc = senaryo_calistir(senaryo, model, provider, launch_log)
+                    result = run_scenario(scenario, model, provider, launch_log)
                 except Exception as e:
-                    sonuc = {
-                        "senaryo_id": senaryo["id"], "model": model,
-                        "provider": provider, "sonuc": "error", "detay": str(e),
+                    result = {
+                        "scenario_id": scenario["id"], "model": model,
+                        "provider": provider, "result": "error", "detail": str(e),
                     }
-                sonuc["tekrar"] = tekrar
+                result["repeat"] = repeat
 
-                pgid_oldur(proc.pid)
+                pgid_kill(proc.pid)
                 logf.close()
-                calistir(["bash", "<WORKSPACE_ROOT>/cleanup_klon.sh"],
+                run_cmd(["bash", "<WORKSPACE_ROOT>/cleanup_klon.sh"],
                           timeout=20)
 
-                with open(SONUC_YOLU, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(sonuc, ensure_ascii=False) + "\n")
-                print(f"  {senaryo['id']:5s} #{tekrar} -> {sonuc['sonuc']}"
-                      f" (gateway={sonuc.get('gateway_karari','-')})", flush=True)
+                with open(RESULT_PATH, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                print(f"  {scenario['id']:5s} #{repeat} -> {result['result']}"
+                      f" (gateway={result.get('gateway_decision','-')})", flush=True)
 
-    _DINLEYICI.kapat()
-    print("\n=== TAMAMLANDI ===", flush=True)
+    _LISTENER.close()
+    print("\n=== COMPLETED ===", flush=True)
 
 
 if __name__ == "__main__":

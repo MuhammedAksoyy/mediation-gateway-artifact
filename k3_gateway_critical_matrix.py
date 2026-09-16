@@ -127,11 +127,11 @@ def set_executor_stage(stage: int):
 
 
 def set_battery_percentage(percentage: float):
-    """Tek yayinciyi yeniden yapilandirir (rakip yayinci kurmaz).
+    """Reconfigures the single existing publisher (does not start a competing one).
 
-    synthetic_battery_publisher artik `percentage` parametresini her tick'te
-    yeniden okur; boylece R3 testi iki yayinci arasindaki yarisa degil, tek
-    ve belirlenimci bir batarya degerine dayanir.
+    synthetic_battery_publisher now re-reads the `percentage` parameter on
+    every tick; the R3 test therefore rests on one deterministic battery
+    value instead of a race between two publishers.
     """
     result = subprocess.run(
         ["ros2", "param", "set", "/synthetic_battery_publisher",
@@ -142,17 +142,18 @@ def set_battery_percentage(percentage: float):
 
 
 def command_topic_publisher_inventory():
-    """/mission/command uzerindeki yayinci sayisi ve dugum listesi.
+    """Publisher count and node list on /mission/command.
 
-    KRITIK: autonomy_launch.py'de mediation_gateway ve command_relay
-    karsilikli dislayicidir (IfCondition / UnlessCondition). Ancak K3
-    calisan sisteme BAGLANIR, onu baslatmaz; onceki bir `use_mediation_
-    gateway:=false` kosusundan ARTAKALAN bir command_relay sureci, gateway
-    ile ayni anda yasayabilir. command_relay hicbir denetim yapmadan
-    /mission/command_raw -> /mission/command aktarimi yaptigi icin, boyle
-    bir artik surec gateway'in REDDETTIGI komutu yine de executor'a
-    ulastirir ve "gateway denied ama arac hareket etti" kaydi uretir.
-    Bu fonksiyon o durumu deney BASLAMADAN tespit eder.
+    CRITICAL: in autonomy_launch.py, mediation_gateway and command_relay
+    are mutually exclusive (IfCondition / UnlessCondition). But K3
+    ATTACHES to an already-running system rather than starting it; a
+    command_relay process left over from an earlier `use_mediation_
+    gateway:=false` run can be alive at the same time as the gateway.
+    Because command_relay forwards /mission/command_raw -> /mission/command
+    with no checks at all, such a leftover process still delivers a
+    command the gateway DENIED to the executor, producing a "gateway
+    denied but the vehicle moved" record. This function detects that
+    condition BEFORE the experiment starts.
     """
     info = subprocess.run(
         ["ros2", "topic", "info", "/mission/command", "--verbose"],

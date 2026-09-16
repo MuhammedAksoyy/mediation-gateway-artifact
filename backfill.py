@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""backfill.py — eksik/basarisiz (model, senaryo) ciftlerini tamamlar.
+"""backfill.py -- fills in missing/failed (model, scenario) pairs.
 
-150-run'daki iki tip eksik icin:
-  1) Gecici gateway-zamanlama kaciraklari (GATEWAY_TIMEOUT_S artik 15->30) --
-     AYNI modelle tekrar denenir.
-  2) kimi-k3'un kalici NVIDIA rate-limit (429) nedeniyle bos kalan 15
-     senaryosu -- YENI model (deepseek-ai/deepseek-v3.1) ile doldurulur.
+For the two kinds of gaps in the 150-run:
+  1) Transient gateway-timing misses (GATEWAY_TIMEOUT_S raised 15->30) --
+     RETRIED with the SAME model.
+  2) 15 scenarios left empty for kimi-k3 due to a persistent NVIDIA
+     rate-limit (429) -- filled in with a NEW model (deepseek-ai/
+     deepseek-v3.1).
 
-Sonuclar AYNI e2e_sonuclar.jsonl'a EKLENIR (append) -- 150-run'un basarili
-120 satiri KORUNUR, yeniden kosulmaz.
+Results are APPENDED to the SAME e2e_results.jsonl -- the 150-run's 120
+successful lines are PRESERVED, not re-run.
 """
 import json
 import sys
@@ -18,11 +19,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 import e2e_harness as eh
 
-# DUZELTME (2026-08-30 sabah): dun geceki kismi backfill'de bazilari
-# ZATEN duzeldi (nemotron-nano/G2, nemotron-super/NM2+G1) -- yalnizca
-# HALA inconclusive olan (bugunku dosya taramasiyla dogrulandi) kaldi.
-# (model, provider, senaryo_id) -- ayni modelle tekrar denenecekler
-TEKRAR_AYNI_MODEL = [
+# FIX (morning of 2026-08-30): some of last night's partial backfill
+# ALREADY got fixed (nemotron-nano/G2, nemotron-super/NM2+G1) -- only what
+# is STILL inconclusive (confirmed by today's file scan) remains.
+# (model, provider, scenario_id) -- to be retried with the same model
+RETRY_SAME_MODEL = [
     ("gemma3:4b", "ollama", "O1"),
     ("gemma3:4b", "ollama", "O2"),
     ("gemma3:4b", "ollama", "O3"),
@@ -36,16 +37,16 @@ TEKRAR_AYNI_MODEL = [
     ("openai/gpt-oss-120b", "nvidia", "Y3"),
 ]
 
-# kimi-k3'un yerine gecen model -- TUM 15 senaryo (dun "deepseek-ai/
-# deepseek-v3.1" GECERSIZ model adiyla denendi, 3 kayit silinip
-# duzeltildi -- dogru ad: deepseek-v4-flash-0731)
-YENI_MODEL = ("deepseek-ai/deepseek-v4-flash-0731", "nvidia")
+# Model replacing kimi-k3 -- ALL 15 scenarios (first tried yesterday with
+# the INVALID model name "deepseek-ai/deepseek-v3.1", 3 records were
+# deleted and corrected -- correct name: deepseek-v4-flash-0731)
+NEW_MODEL = ("deepseek-ai/deepseek-v4-flash-0731", "nvidia")
 
 
-def calistir_tek(model, provider, senaryo_id, senaryolar_by_id):
-    senaryo = senaryolar_by_id[senaryo_id]
-    etiket = f"backfill_{model.replace('/', '_').replace(':', '_')}_{senaryo_id}"
-    launch_log = f"/tmp/e2e_harness_{etiket}.log"
+def run_single(model, provider, scenario_id, scenarios_by_id):
+    scenario = scenarios_by_id[scenario_id]
+    label = f"backfill_{model.replace('/', '_').replace(':', '_')}_{scenario_id}"
+    launch_log = f"/tmp/e2e_harness_{label}.log"
     cmd = (
         "source /opt/ros/humble/setup.bash && "
         "source <WORKSPACE_ROOT>/install/setup.bash && "
@@ -55,41 +56,41 @@ def calistir_tek(model, provider, senaryo_id, senaryolar_by_id):
         "use_gui:=false "
         f"llm_provider:={provider} llm_model:={model}"
     )
-    proc, logf = eh.setsid_baslat(cmd, launch_log)
+    proc, logf = eh.setsid_start(cmd, launch_log)
     time.sleep(35)
     try:
-        sonuc = eh.senaryo_calistir(senaryo, model, provider, launch_log)
+        result = eh.run_scenario(scenario, model, provider, launch_log)
     except Exception as e:
-        sonuc = {"senaryo_id": senaryo_id, "model": model, "provider": provider,
-                  "sonuc": "error", "detay": str(e)}
-    eh.pgid_oldur(proc.pid)
+        result = {"scenario_id": scenario_id, "model": model, "provider": provider,
+                  "result": "error", "detail": str(e)}
+    eh.pgid_kill(proc.pid)
     logf.close()
-    eh.calistir(["bash", "<WORKSPACE_ROOT>/cleanup_klon.sh"], timeout=20)
-    with open(eh.SONUC_YOLU, "a", encoding="utf-8") as f:
-        f.write(json.dumps(sonuc, ensure_ascii=False) + "\n")
-    print(f"  [backfill] {model} {senaryo_id} -> {sonuc['sonuc']}"
-          f" (gateway={sonuc.get('gateway_karari', '-')})", flush=True)
+    eh.run_cmd(["bash", "<WORKSPACE_ROOT>/cleanup_klon.sh"], timeout=20)
+    with open(eh.RESULT_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(result, ensure_ascii=False) + "\n")
+    print(f"  [backfill] {model} {scenario_id} -> {result['result']}"
+          f" (gateway={result.get('gateway_decision', '-')})", flush=True)
 
 
 def main():
-    katalog = eh.yaml.safe_load(open(eh.KATALOG_YOLU, encoding="utf-8"))
-    senaryolar_by_id = {s["id"]: s for s in katalog["senaryolar"]}
+    catalog = eh.yaml.safe_load(open(eh.CATALOG_PATH, encoding="utf-8"))
+    scenarios_by_id = {s["id"]: s for s in catalog["scenarios"]}
 
-    eh._DINLEYICI = eh.DurumDinleyici()
+    eh._LISTENER = eh.StateListener()
 
-    print(f"=== BACKFILL: {len(TEKRAR_AYNI_MODEL)} ayni-model tekrar + "
-          f"15 deepseek (kimi yerine) ===", flush=True)
+    print(f"=== BACKFILL: {len(RETRY_SAME_MODEL)} same-model retries + "
+          f"15 deepseek (replacing kimi) ===", flush=True)
 
-    for model, provider, sid in TEKRAR_AYNI_MODEL:
-        calistir_tek(model, provider, sid, senaryolar_by_id)
+    for model, provider, sid in RETRY_SAME_MODEL:
+        run_single(model, provider, sid, scenarios_by_id)
 
-    model, provider = YENI_MODEL
-    print(f"\n=== YENI MODEL (kimi-k3 yerine): {model} ===", flush=True)
-    for sid in senaryolar_by_id:
-        calistir_tek(model, provider, sid, senaryolar_by_id)
+    model, provider = NEW_MODEL
+    print(f"\n=== NEW MODEL (replacing kimi-k3): {model} ===", flush=True)
+    for sid in scenarios_by_id:
+        run_single(model, provider, sid, scenarios_by_id)
 
-    eh._DINLEYICI.kapat()
-    print("\n=== BACKFILL TAMAMLANDI ===", flush=True)
+    eh._LISTENER.close()
+    print("\n=== BACKFILL COMPLETE ===", flush=True)
 
 
 if __name__ == "__main__":

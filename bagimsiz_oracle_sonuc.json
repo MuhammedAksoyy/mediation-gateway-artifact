@@ -1,9 +1,0 @@
-{
-  "yontem": "TEKNOFEST sartname SS6.10 tabanli bagimsiz kontrol (risk_policy.yaml KULLANILMADI)",
-  "bulgular": {
-    "risk_policy_asimetrisi": "risk_policy.yaml asama 8'i yuksek-risk, asama 10'u dusuk-risk sayiyor; sartname SS6.10 ikisini ayni %45 egim sistemi olarak tanimliyor, ayirmiyor -- ASIMETRI risk_policy.yaml'a ozgu, sartnameden DOGRULANMIYOR."
-  },
-  "kontrol_edilen_allow_vaka_sayisi": 208,
-  "sartname_ile_sorunlu_bulunan": 0,
-  "detaylar": []
-}
