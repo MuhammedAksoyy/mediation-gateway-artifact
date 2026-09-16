@@ -1,0 +1,7 @@
+[INFO] [1789456580.673656250] [rcl]: Found security directory: <WORKSPACE_ROOT>/sros2_gateway_test/keystore/enclaves/executor_real
+[executor_sub_node] RECEIVED: command=0 target_stage=8
+[executor_sub_node] RECEIVED: command=0 target_stage=8
+[executor_sub_node] RECEIVED: command=0 target_stage=8
+[executor_sub_node] RECEIVED: command=0 target_stage=8
+[executor_sub_node] RECEIVED: command=0 target_stage=8
+[executor_sub_node] TOPLAM_ALINAN=5

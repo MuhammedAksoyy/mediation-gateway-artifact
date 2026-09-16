@@ -1,0 +1,36 @@
+{
+  "schema": "k5-sros2-focused/v1",
+  "domain_id": 99,
+  "rmw": "rmw_fastrtps_cpp",
+  "security_strategy": "Enforce",
+  "topic": "/mission/command",
+  "policy_sha256": "dbd0f9250dd7adcc574ef7d1e9ac8252e31aebae8735c730cbd0ab414879bbbb",
+  "cases": [
+    {
+      "case": "authorized_gateway",
+      "expected_publish_permission": true,
+      "publisher_created": true,
+      "executor_received": true,
+      "received_count": 5,
+      "permission_denied": false
+    },
+    {
+      "case": "valid_identity_rogue",
+      "expected_publish_permission": false,
+      "publisher_created": false,
+      "executor_received": false,
+      "received_count": 0,
+      "permission_denied": true
+    },
+    {
+      "case": "anonymous_rogue",
+      "expected_publish_permission": false,
+      "publisher_created": true,
+      "executor_received": false,
+      "received_count": 0,
+      "permission_denied": true
+    }
+  ],
+  "pass": true,
+  "scope": "gateway_real -> executor_real command topic only; full ROS graph not Enforce-tested"
+}

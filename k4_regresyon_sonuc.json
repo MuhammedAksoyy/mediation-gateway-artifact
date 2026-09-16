@@ -1,0 +1,62 @@
+{
+  "schema": "k4-regression/v1",
+  "total": 11,
+  "passed": 11,
+  "cases": [
+    {
+      "id": "stage10_resume_deny",
+      "pass": true,
+      "detail": "stage=10"
+    },
+    {
+      "id": "stage7_resume_allow",
+      "pass": true,
+      "detail": "stage=7"
+    },
+    {
+      "id": "stale_status_resume_deny",
+      "pass": true,
+      "detail": "status age>2s"
+    },
+    {
+      "id": "estop_resume_deny",
+      "pass": true,
+      "detail": "estop=true"
+    },
+    {
+      "id": "low_battery_start_deny",
+      "pass": true,
+      "detail": "battery=.10"
+    },
+    {
+      "id": "low_battery_abort_allow",
+      "pass": true,
+      "detail": "abort exception"
+    },
+    {
+      "id": "missing_battery_fail_closed",
+      "pass": true,
+      "detail": "battery missing"
+    },
+    {
+      "id": "start_target0_allow",
+      "pass": true,
+      "detail": "normal start"
+    },
+    {
+      "id": "start_target1_allow",
+      "pass": true,
+      "detail": "normal stage 1"
+    },
+    {
+      "id": "start_target8_deny",
+      "pass": true,
+      "detail": "restricted jump"
+    },
+    {
+      "id": "abort_target8_not_r4_denied",
+      "pass": true,
+      "detail": "target ignored for abort"
+    }
+  ]
+}

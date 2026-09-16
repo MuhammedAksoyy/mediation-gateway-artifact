@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<policy version="0.2.0">
+  <enclaves>
+    <!-- gateway_real: /mission/command'a YAZMA izni olan TEK kimlik,
+         gercek mediation_gateway.py'nin karsiligi. -->
+    <enclave path="/gateway_real">
+      <profiles>
+        <profile ns="/" node="gateway_pub_node">
+          <services reply="ALLOW">
+            <service>~/describe_parameters</service>
+            <service>~/get_parameter_types</service>
+            <service>~/get_parameters</service>
+            <service>~/list_parameters</service>
+            <service>~/set_parameters</service>
+            <service>~/set_parameters_atomically</service>
+          </services>
+          <topics publish="ALLOW">
+            <topic>mission/command</topic>
+            <topic>parameter_events</topic>
+            <topic>rosout</topic>
+            <topic>ros_discovery_info</topic>
+          </topics>
+          <topics subscribe="ALLOW">
+            <topic>ros_discovery_info</topic>
+          </topics>
+        </profile>
+      </profiles>
+    </enclave>
+
+    <!-- executor_real: yalnizca OKUMA izni — gercek mission_executor.py'nin
+         karsiligi. -->
+    <enclave path="/executor_real">
+      <profiles>
+        <profile ns="/" node="executor_sub_node">
+          <services reply="ALLOW">
+            <service>~/describe_parameters</service>
+            <service>~/get_parameter_types</service>
+            <service>~/get_parameters</service>
+            <service>~/list_parameters</service>
+            <service>~/set_parameters</service>
+            <service>~/set_parameters_atomically</service>
+          </services>
+          <topics subscribe="ALLOW">
+            <topic>mission/command</topic>
+            <topic>ros_discovery_info</topic>
+          </topics>
+          <topics publish="ALLOW">
+            <topic>parameter_events</topic>
+            <topic>rosout</topic>
+            <topic>ros_discovery_info</topic>
+          </topics>
+        </profile>
+      </profiles>
+    </enclave>
+
+    <!-- rogue_real: GECERLI SROS2 kimligi (keystore'dan uretilmis) AMA
+         mission/command'a yazma izni KASITLI OLARAK YOK — gercek sistemde
+         ele gecirilmis/kotu niyetli bir node'un gateway'i BYPASS ederek
+         dogrudan komut kanalina yazma girisimini temsil eder. -->
+    <enclave path="/rogue_real">
+      <profiles>
+        <profile ns="/" node="rogue_pub_node">
+          <services reply="ALLOW">
+            <service>~/describe_parameters</service>
+            <service>~/get_parameter_types</service>
+            <service>~/get_parameters</service>
+            <service>~/list_parameters</service>
+            <service>~/set_parameters</service>
+            <service>~/set_parameters_atomically</service>
+          </services>
+          <topics publish="ALLOW">
+            <topic>parameter_events</topic>
+            <topic>rosout</topic>
+            <topic>ros_discovery_info</topic>
+          </topics>
+          <topics subscribe="ALLOW">
+            <topic>ros_discovery_info</topic>
+          </topics>
+        </profile>
+      </profiles>
+    </enclave>
+  </enclaves>
+</policy>

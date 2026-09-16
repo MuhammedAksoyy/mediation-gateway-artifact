@@ -1,0 +1,141 @@
+{
+  "schema": "k1-manifest/v1",
+  "created_utc": "2026-09-16T13:09:10.720383+00:00",
+  "host": "<REDACTED_HOST>",
+  "ros_domain_id_expected": 42,
+  "ros_localhost_only_expected": true,
+  "git_revision": "fbb8df984601c07783e1b91790e9fb38d8d351f4",
+  "git_dirty": true,
+  "artifacts": {
+    "scenario_catalog.yaml": {
+      "bytes": 10549,
+      "sha256": "00d7fc9a843fc72f297800bd85ce9d828a6de728123a994f2200275d50c6ddd0"
+    },
+    "risk_policy.yaml": {
+      "bytes": 2432,
+      "sha256": "6dfe4a41626a074ed8234699c1e3e573119555e40caa6baa20c34f8dbe030dc5"
+    },
+    "analiz_0b.py": {
+      "bytes": 8855,
+      "sha256": "2a4261f7b25ab42fe132ddce38657b43f50d679a7b4d4221e52ed8b39b784cfd"
+    },
+    "bagimsiz_oracle_kontrolu.py": {
+      "bytes": 4577,
+      "sha256": "d089033d949c1e3583decbb467e86dae749b65c60c2d14df6e9aaac0e8ea5432"
+    },
+    "bypass_kirilim.py": {
+      "bytes": 6929,
+      "sha256": "65b43c1f18b4e91b901044a880f9c4787d765c277356fe61cd2bbcbf5bac2652"
+    },
+    "bypass_deneyi.py": {
+      "bytes": 6872,
+      "sha256": "046d8f630d750cae8176f2b203d364cf3e26eca8473921f5e5f14c0c395884a4"
+    },
+    "e2e_harness.py": {
+      "bytes": 20272,
+      "sha256": "e0f7d390e6360f77d7f4eaf1df4af5b230525a1b1ec1913ad023e533f9f0a559"
+    },
+    "e2e_sonuclar_donmus.jsonl": {
+      "bytes": 495210,
+      "sha256": "8fc5db75fa732028949ceaf22e9aae9efa2913ebd7a58b214314d0c1f66ae3c5"
+    },
+    "bypass_deneyi_sonuclari.jsonl": {
+      "bytes": 94078,
+      "sha256": "7a05cbacee3d4dd424aae08306f772a7ffb2c274948ebe73e4c7ff21caf37bc9"
+    },
+    "bypass_kirilim_sonuc.json": {
+      "bytes": 13094,
+      "sha256": "aa29090dc89d366db57b8fb13e8363b29080cb02b4e24e4182c6213be32a72f6"
+    },
+    "resume_skip_deneyi.py": {
+      "bytes": 8959,
+      "sha256": "d00b797e48ae75d202704748650a098f16ebdc81d1664430d87b0e1a24d262eb"
+    },
+    "k3_gateway_kritik_matrisi.py": {
+      "bytes": 18278,
+      "sha256": "879abb8936478dc5939a32b4aa39a931aa80692c4c95e39ee7ffefedad52c51b"
+    },
+    "k3_gateway_kritik_matrisi_sonuclari.jsonl": {
+      "bytes": 80984,
+      "sha256": "67e8aee7dff8b98739b8e9dac578b6942622ce56ecd4e2c6ab651921b9a2d891"
+    },
+    "k3_batarya_stres_sonuclari.jsonl": {
+      "bytes": 47887,
+      "sha256": "092784b3ca8af2dabd3722c4a973538a2f98c8c93ea02a39e8b478fd82172cc2"
+    },
+    "k3_gateway_kritik_matrisi_karisik_tur_ham.jsonl": {
+      "bytes": 110551,
+      "sha256": "d8afe2600177a79cc868cd4a28227ab0e081ab05c3dee1f92773749d897beab9"
+    },
+    "k3_gateway_kritik_matrisi_ilk_tur_ham.jsonl": {
+      "bytes": 24034,
+      "sha256": "68dd6c7885993e5b102671f2219e32771b8e23cd3bccc57c2c791c27beb0d0d8"
+    },
+    "k3_gateway_kritik_matrisi_ikinci_tur_ham.jsonl": {
+      "bytes": 1197,
+      "sha256": "5587400b8c9daccd3471eaef67c928f4eabf2588e5e2cd56e20eaa1e646c8d39"
+    },
+    "k3_gateway_kritik_matrisi_ucuncu_tur_ham.jsonl": {
+      "bytes": 15194,
+      "sha256": "6328ee69db067f7455b597e504b819c68fc84bf6eba0a714f7769eb67c99ec4f"
+    },
+    "k3_gateway_kritik_matrisi_dorduncu_tur_ham.jsonl": {
+      "bytes": 46914,
+      "sha256": "dfc31fe9c440d2fb5223cf8e45b41c784ccf9cbf97b9947ecaae596ecd860176"
+    },
+    "k4_regresyon.py": {
+      "bytes": 3216,
+      "sha256": "20230395515bf1b0bd93afc1d42c1634e7aebe4816cdba055efaf17700127b67"
+    },
+    "k4_regresyon_sonuc.json": {
+      "bytes": 1209,
+      "sha256": "255a37eb5dd880ecb108c79d73f4be56d3908a0cb600e6239b63f0df975167c2"
+    },
+    "gateway_gecikme_deneyi.py": {
+      "bytes": 6309,
+      "sha256": "ad73eba0b6be79bda859d2d67ea9406ef13c2c911b69bc873784d4079ecffb57"
+    },
+    "gateway_gecikme_sonuclari.json": {
+      "bytes": 1559,
+      "sha256": "aeac67849fea42ab7e617a911edd83c9e01f4c5454b793a66fc775c0009fa14f"
+    },
+    "role_mekanizmasi_dogrulama_sonuc.json": {
+      "bytes": 2357,
+      "sha256": "14d79f7d0b74fb198a5a1a9b9dda830bdd6f0a443b945f5e148757a894968171"
+    },
+    "sros2_gateway_test/run_test.sh": {
+      "bytes": 2231,
+      "sha256": "31e8494751706515064d5add899198268854f93818e76e5c6d6295c3f9e05a0d"
+    },
+    "sros2_gateway_test/k5_sros2_rapor.json": {
+      "bytes": 1025,
+      "sha256": "3d0aeceb37685d689e74e59b0bec0905969683c655e3e662d52fd9fb2ee44b3d"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test1_pub.log": {
+      "bytes": 516,
+      "sha256": "ebff1a1f858e12b6634e4d605e24295eb352c5728dadc09e1cbabd1bda855270"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test1_sub.log": {
+      "bytes": 463,
+      "sha256": "017c9d10c3b25a826d2111f365e2c7a8eecdf40526e10bebfc1291955530d661"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test2_pub.log": {
+      "bytes": 1324,
+      "sha256": "dfa767fd0f4d75b2815bc9fe4dab6e18fd9cfa4f5bad38aa7d376fe244f8e806"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test2_sub.log": {
+      "bytes": 188,
+      "sha256": "0b44a72fdd97dbb33ee34fb9439146c3a5d69ac8c716294a113b0c17cc362b22"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test3_pub.log": {
+      "bytes": 355,
+      "sha256": "f308f5cd70298081d2deffde192c5050ab7a118f55b80c87888a092f88d07974"
+    },
+    "sros2_gateway_test/raw_logs/sros2r_test3_sub.log": {
+      "bytes": 188,
+      "sha256": "733694829ea92b5641cbbc55ba062455d67babce92044fd8417fd3da4c0b1b96"
+    }
+  },
+  "missing": [],
+  "status": "ready_for_replay"
+}

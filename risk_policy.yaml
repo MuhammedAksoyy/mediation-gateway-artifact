@@ -1,0 +1,44 @@
+# risk_policy.yaml — surumlu, makinece okunur tek politika kaynagi
+# (robovis-2027-plan.md Bolum 2.4). mediation_gateway.py bu dosyayi okur;
+# sezgisel/elle gomulu esik DEGERI kod icinde TUTULMAZ.
+politika_surumu: "1.1.0"
+# SHA-256 ozeti, dosya degistiginde build/test script'i tarafindan yeniden
+# hesaplanip mediation_gateway'in log'una yazilir (Bolum 2.4 "surum/hash ile
+# yuklendigi dogrulanmali" gereksinimi).
+
+asamalar:
+  1: {ad: "Su Gecisi",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  2: {ad: "Tasli Yol",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  3: {ad: "Yan Egim",        risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  4: {ad: "Dik Engel",       risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  5: {ad: "Koni Slalom",     risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  6: {ad: "Kayar Engel",     risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  7: {ad: "Engebeli Arazi",  risk_sinifi: dusuk, resume_allowed: true,  skip_allowed_ortak_kanal: false}
+  8: {ad: "Dik Egim Cikis",  risk_sinifi: yuksek, resume_allowed: false, skip_allowed_ortak_kanal: false}
+  9: {ad: "Atis",            risk_sinifi: waypointsiz, resume_allowed: false, skip_allowed_ortak_kanal: false}
+  10: {ad: "Dik Egim Inis",  risk_sinifi: yuksek, resume_allowed: false, skip_allowed_ortak_kanal: false}
+
+# SKIP, hicbir asamada ortak (LLM/UI) kanaldan varsayilan olarak izinli
+# DEGILDIR (robovis-2027-plan.md Asama A) — yalnizca ayri, SROS2 ile
+# yetkilendirilmis operator kanali acilirsa, o kanal icin ayrica politika
+# tanimlanir. Bu Regular Paper penceresinde o kanal YOK; hepsi false kalir.
+
+tek_asama_test_modu:
+  ortak_kanaldan_etkin: false  # R4: START target_stage>0 mediation kanalindan HER ZAMAN reddedilir
+  yalnizca_test_enclave: true  # SROS2 ile ayri kimlik tanimlanirsa acik olur (Asama C sonrasi, bu planda YOK)
+
+telemetri_tazelik_esikleri:
+  mission_status_max_yas_s: 2.0
+  batarya_max_yas_s: 5.0
+  tf_odom_max_yas_s: 1.0
+
+batarya:
+  min_yuzde: 0.20
+
+konum_toleransi:
+  sign_jump_max_distance_m: 7.0
+
+# Eksik/bayat/NaN/gecersiz/celiskili veri VARSAYILAN OLARAK RET uretir
+# (robovis-2027-plan.md Bolum 2.3). ABORT/ESTOP istisnasi acikca R3'te
+# kodlanir, bu politika dosyasinda ayrica tekrar edilmez.
+fail_closed_varsayilan: true

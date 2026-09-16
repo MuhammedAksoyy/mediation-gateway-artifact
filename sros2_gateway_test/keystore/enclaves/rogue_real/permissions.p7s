@@ -1,0 +1,89 @@
+MIME-Version: 1.0
+Content-Type: multipart/signed; protocol="application/x-pkcs7-signature"; micalg="sha-256"; boundary="----83544511D05D8A23F70993621515477F"
+
+This is an S/MIME signed message
+
+------83544511D05D8A23F70993621515477F
+Content-Type: text/plain
+
+<dds xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.omg.org/spec/DDS-SECURITY/20170901/omg_shared_ca_permissions.xsd">
+  <permissions>
+    <grant name="/rogue_real">
+      <subject_name>CN=/rogue_real</subject_name>
+      <validity>
+        <not_before>2026-08-29T20:18:11</not_before>
+        <not_after>2036-08-27T20:18:11</not_after>
+      </validity>
+      <allow_rule>
+        <domains>
+          <id>99</id>
+        </domains>
+        <publish>
+          <topics>
+            <topic>rr/rogue_pub_node/describe_parametersReply</topic>
+            <topic>rr/rogue_pub_node/get_parameter_typesReply</topic>
+            <topic>rr/rogue_pub_node/get_parametersReply</topic>
+            <topic>rr/rogue_pub_node/list_parametersReply</topic>
+            <topic>rr/rogue_pub_node/set_parametersReply</topic>
+            <topic>rr/rogue_pub_node/set_parameters_atomicallyReply</topic>
+            <topic>rt/parameter_events</topic>
+            <topic>rt/rosout</topic>
+            <topic>rt/ros_discovery_info</topic>
+          </topics>
+        </publish>
+        <subscribe>
+          <topics>
+            <topic>rq/rogue_pub_node/describe_parametersRequest</topic>
+            <topic>rq/rogue_pub_node/get_parameter_typesRequest</topic>
+            <topic>rq/rogue_pub_node/get_parametersRequest</topic>
+            <topic>rq/rogue_pub_node/list_parametersRequest</topic>
+            <topic>rq/rogue_pub_node/set_parametersRequest</topic>
+            <topic>rq/rogue_pub_node/set_parameters_atomicallyRequest</topic>
+            <topic>rt/ros_discovery_info</topic>
+          </topics>
+        </subscribe>
+      </allow_rule>
+      <allow_rule>
+        <domains>
+          <id>99</id>
+        </domains>
+        <publish>
+          <topics>
+            <topic>ros_discovery_info</topic>
+          </topics>
+        </publish>
+        <subscribe>
+          <topics>
+            <topic>ros_discovery_info</topic>
+          </topics>
+        </subscribe>
+      </allow_rule>
+      <default>DENY</default>
+    </grant>
+  </permissions>
+</dds>
+
+------83544511D05D8A23F70993621515477F
+Content-Type: application/x-pkcs7-signature; name="smime.p7s"
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="smime.p7s"
+
+MIIC+QYJKoZIhvcNAQcCoIIC6jCCAuYCAQExDzANBglghkgBZQMEAgEFADALBgkq
+hkiG9w0BBwGgggE/MIIBOzCB4qADAgECAhQMdVFlL9ofzpaxIkBPqIFizlaeZTAK
+BggqhkjOPQQDAjASMRAwDgYDVQQDDAdzcm9zMkNBMB4XDTI2MDgyOTIwMTgxMFoX
+DTM2MDgyNzIwMTgxMFowEjEQMA4GA1UEAwwHc3JvczJDQTBZMBMGByqGSM49AgEG
+CCqGSM49AwEHA0IABLywZWVF3XAJspQY+vopQ4WZH0qL8S8Nev2rw+q2iDiVlTB1
+OtMGjobdi1Xp2/flyxIFuubK7pemRofBP28lI/OjFjAUMBIGA1UdEwEB/wQIMAYB
+Af8CAQEwCgYIKoZIzj0EAwIDSAAwRQIhAJ48tJYIE8HDvcMQ0IgmFW2HLsbpuxtr
+MpEgh/E8U0n/AiA71vpbv6q8+qtpO1CVn9EuSYQIBC1bF6C7xfMgZK/FkTGCAX4w
+ggF6AgEBMCowEjEQMA4GA1UEAwwHc3JvczJDQQIUDHVRZS/aH86WsSJAT6iBYs5W
+nmUwDQYJYIZIAWUDBAIBBQCggeQwGAYJKoZIhvcNAQkDMQsGCSqGSIb3DQEHATAc
+BgkqhkiG9w0BCQUxDxcNMjYwODMwMjAxODEyWjAvBgkqhkiG9w0BCQQxIgQgKis+
+PgpQAhx+7slH5+2dWOrBZsrsYixwOUu2B7Qv5ncweQYJKoZIhvcNAQkPMWwwajAL
+BglghkgBZQMEASowCwYJYIZIAWUDBAEWMAsGCWCGSAFlAwQBAjAKBggqhkiG9w0D
+BzAOBggqhkiG9w0DAgICAIAwDQYIKoZIhvcNAwICAUAwBwYFKw4DAgcwDQYIKoZI
+hvcNAwICASgwCgYIKoZIzj0EAwIERzBFAiAFSVBl3gaboqzRnQarX5tyXd4/e6oL
+6+7ZWJQa5+Ho9AIhANqd1R9gt0t+PQbLsuFP3PKJtt6qBuUEZIeSrmzfHb0I
+
+------83544511D05D8A23F70993621515477F--
+

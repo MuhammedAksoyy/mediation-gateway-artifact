@@ -1,0 +1,24 @@
+{
+  "schema": "k3-summary/v1",
+  "unique_cases": 83,
+  "completed": 83,
+  "inconclusive": 0,
+  "by_command": {
+    "RESUME": {
+      "total": 81,
+      "completed": 81,
+      "trace_recorded": 81,
+      "after_stage_counts": {
+        "3": 81
+      }
+    },
+    "SKIP": {
+      "total": 2,
+      "completed": 2,
+      "trace_recorded": 2,
+      "after_stage_counts": {
+        "8": 2
+      }
+    }
+  }
+}

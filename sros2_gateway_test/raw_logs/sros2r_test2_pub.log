@@ -1,0 +1,11 @@
+[INFO] [1789456589.034277204] [rcl]: Found security directory: <WORKSPACE_ROOT>/sros2_gateway_test/keystore/enclaves/rogue_real
+[37;1m2026-09-15 10:16:29.077 [31;1m[[37;1mSECURITY[31;1m Error] [37mrt/mission/command topic not found in allow rule. (./src/cpp/security/accesscontrol/Permissions.cpp:1191)[34;1m -> Function [36mcheck_create_datawriter[m
+[37;1m2026-09-15 10:16:29.077 [31;1m[[37;1mSECURITY[31;1m Error] [37mError checking creation of local writer  (rt/mission/command topic not found in allow rule. (./src/cpp/security/accesscontrol/Permissions.cpp:1191))
+[34;1m -> Function [36mget_datawriter_sec_attributes[m
+[37;1m2026-09-15 10:16:29.077 [31;1m[[37;1mDATA_WRITER[31;1m Error] [37mProblem creating associated Writer[34;1m -> Function [36menable[m
+Traceback (most recent call last):
+  File "<WORKSPACE_ROOT>/sros2_gateway_test/pub_node.py", line 15, in <module>
+    pub = node.create_publisher(StageCommand, "mission/command", 10)
+  File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1299, in create_publisher
+    publisher_object = _rclpy.Publisher(
+rclpy._rclpy_pybind11.RCLError: Failed to create publisher: create_publisher() could not create data writer, at ./src/publisher.cpp:280, at ./src/rcl/publisher.c:116
